@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35825.156
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Joseco.Communication.External.Contracts", "Joseco.Communication.External.Contracts\Joseco.Communication.External.Contracts.csproj", "{51680963-B717-4616-9213-49AE7645C00D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Joseco.Communication.External.RabbitMQ", "Joseco.Communication.External.RabbitMQ\Joseco.Communication.External.RabbitMQ.csproj", "{88A5ABD6-6FD0-4A92-AEC7-B796501DAFEF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{51680963-B717-4616-9213-49AE7645C00D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{51680963-B717-4616-9213-49AE7645C00D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{51680963-B717-4616-9213-49AE7645C00D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{51680963-B717-4616-9213-49AE7645C00D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{88A5ABD6-6FD0-4A92-AEC7-B796501DAFEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{88A5ABD6-6FD0-4A92-AEC7-B796501DAFEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{88A5ABD6-6FD0-4A92-AEC7-B796501DAFEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{88A5ABD6-6FD0-4A92-AEC7-B796501DAFEF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {634D3DBA-C9D4-44F1-98F7-80BD6910388F}
+	EndGlobalSection
+EndGlobal

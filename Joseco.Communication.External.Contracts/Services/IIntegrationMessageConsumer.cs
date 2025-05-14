@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Joseco.Communication.External.RabbitMQ.Services;
+namespace Joseco.Communication.External.Contracts.Services;
 
 public interface IIntegrationMessageConsumer<T> where T : IntegrationMessage
 {

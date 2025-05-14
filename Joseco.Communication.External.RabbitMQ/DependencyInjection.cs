@@ -1,12 +1,10 @@
 ﻿using Joseco.Communication.External.Contracts.Message;
 using Joseco.Communication.External.Contracts.Services;
-using Microsoft.Extensions.Configuration;
+using Joseco.Communication.External.RabbitMQ.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
-using Joseco.Communication.External.RabbitMQ;
-using Joseco.Communication.External.RabbitMQ.Services;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Joseco.CommunicationExternal.RabbitMQ;
 
@@ -19,10 +17,10 @@ public static class DependencyInjection
         {
             var factory = new ConnectionFactory
             {
-                HostName = rabbitMQSettings.Host,
-                UserName = rabbitMQSettings.UserName,
-                Password = rabbitMQSettings.Password,
-                VirtualHost = rabbitMQSettings.VirtualHost
+                HostName = rabbitMQSettings?.Host!,
+                UserName = rabbitMQSettings?.UserName!,
+                Password = rabbitMQSettings?.Password!,
+                VirtualHost = rabbitMQSettings?.VirtualHost!
             };
             return factory.CreateConnectionAsync().GetAwaiter().GetResult();
         });

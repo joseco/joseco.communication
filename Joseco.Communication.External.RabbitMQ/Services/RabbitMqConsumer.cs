@@ -1,4 +1,5 @@
 ﻿using Joseco.Communication.External.Contracts.Message;
+using Joseco.Communication.External.Contracts.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -6,7 +7,6 @@ using Newtonsoft.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Text;
-using System.Threading.Channels;
 
 namespace Joseco.Communication.External.RabbitMQ.Services;
 

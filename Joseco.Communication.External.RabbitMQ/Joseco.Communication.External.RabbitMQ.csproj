@@ -31,7 +31,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
     <PackageReference Include="AspNetCore.HealthChecks.Rabbitmq" Version="9.0.0" />
-    <PackageReference Include="Joseco.Communication.External.Contracts" Version="1.0.0" />
+    <PackageReference Include="Joseco.Communication.External.Contracts" Version="1.0.1" />
   </ItemGroup>
   
 </Project>

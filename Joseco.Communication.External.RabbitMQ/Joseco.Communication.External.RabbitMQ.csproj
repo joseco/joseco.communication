@@ -33,6 +33,9 @@
     <PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
     <PackageReference Include="AspNetCore.HealthChecks.Rabbitmq" Version="9.0.0" />
     <PackageReference Include="Joseco.Communication.External.Contracts" Version="1.0.1" />
+    
+    <PackageReference Include="OpenTelemetry" Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.12.0" />
   </ItemGroup>
   
 </Project>

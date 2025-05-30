@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Joseco.Communication.External.Contracts.Message;
+﻿namespace Joseco.Communication.External.Contracts.Message;
 
 public abstract record IntegrationMessage 
 {

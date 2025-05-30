@@ -6,10 +6,9 @@ using OpenTelemetry;
 using OpenTelemetry.Context.Propagation;
 using RabbitMQ.Client;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Text;
 using System.Text.RegularExpressions;
-using OpenTelemetry.Metrics;
-using System.Diagnostics.Metrics;
 
 namespace Joseco.Communication.External.RabbitMQ.Services;
 

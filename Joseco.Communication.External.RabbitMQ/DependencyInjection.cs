@@ -1,19 +1,20 @@
 ﻿using Joseco.Communication.External.Contracts.Message;
 using Joseco.Communication.External.Contracts.Services;
+using Joseco.Communication.External.RabbitMQ;
 using Joseco.Communication.External.RabbitMQ.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
-namespace Joseco.CommunicationExternal.RabbitMQ;
+namespace Joseco.Communication.External.RabbitMQ;
 
 public static class DependencyInjection
 {
     public static IServiceCollection AddRabbitMQ(this IServiceCollection services, RabbitMqSettings rabbitMQSettings)
     {
         services.TryAddSingleton(rabbitMQSettings);
-        services.AddSingleton<IConnection>(sp =>
+        services.AddSingleton(sp =>
         {
             var factory = new ConnectionFactory
             {

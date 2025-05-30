@@ -9,9 +9,8 @@ using OpenTelemetry.Context.Propagation;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Diagnostics;
-using System.Text;
-using OpenTelemetry.Metrics;
 using System.Diagnostics.Metrics;
+using System.Text;
 
 namespace Joseco.Communication.External.RabbitMQ.Services;
 

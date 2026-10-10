@@ -1,4 +1,4 @@
-﻿using Joseco.Communication.External.Contracts.Message;
+using Joseco.Communication.External.Contracts.Message;
 using Joseco.Communication.External.Contracts.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -119,38 +119,90 @@ internal class RabbitMqConsumer<T> : BackgroundService
                 activity.SetTag("message.type", typeof(T).Name);
             }
 
-            using var scope = _provider.CreateScope();
-            var handler = scope.ServiceProvider.GetRequiredService<IIntegrationMessageConsumer<T>>();
-
-            var body = ea.Body.ToArray();
-            var json = DeserializeMessage(body);
-
-            if (json != null)
+            T? message;
+            try
             {
+                message = DeserializeMessage(ea.Body.ToArray());
+            }
+            catch (Exception ex)
+            {
+                message = null;
+                _logger.LogError(ex, "Message from queue {QueueName} could not be deserialized", _queueName);
+            }
+
+            if (message == null)
+            {
+                // Retrying can't fix a malformed body.
+                MessagesFailedCounter.Add(1, new KeyValuePair<string, object?>("queue", _queueName));
+                await DeadLetterAsync(ea, "Message could not be deserialized", 1, stoppingToken);
+                await _channel.BasicAckAsync(ea.DeliveryTag, false);
+                return;
+            }
+
+            int maxAttempts = Math.Max(1, _settings.MaxRetryAttempts);
+            for (int attempt = 1; ; attempt++)
+            {
+                // A new scope per attempt: a failed attempt may leave the DbContext in a dirty state.
+                using var scope = _provider.CreateScope();
+                var handler = scope.ServiceProvider.GetRequiredService<IIntegrationMessageConsumer<T>>();
+
                 try
                 {
-                    await handler.HandleAsync(json, stoppingToken);
+                    await handler.HandleAsync(message, stoppingToken);
 
                     MessagesReceivedCounter.Add(1, new KeyValuePair<string, object?>("queue", _queueName));
 
                     await _channel.BasicAckAsync(ea.DeliveryTag, false);
+                    return;
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    // Shutting down: leave the message unacknowledged so the broker redelivers it.
+                    return;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing message for Consumer {consumerName}", GetType().Name);
-                    // Puedes hacer retry, dead-letter, etc.
-
                     MessagesFailedCounter.Add(1, new KeyValuePair<string, object?>("queue", _queueName));
-
-                    // Enviar el mensaje a una cola de error o hacer un retry
-                    //await _channel.BasicNackAsync(ea.DeliveryTag, false, true);
-
                     activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+
+                    if (attempt >= maxAttempts)
+                    {
+                        _logger.LogError(ex, "Message {MessageId} from queue {QueueName} failed {Attempts} times; moving it to {ErrorQueue}",
+                            message.Id, _queueName, attempt, ErrorQueueName);
+
+                        await DeadLetterAsync(ea, ex.ToString(), attempt, stoppingToken);
+                        await _channel.BasicAckAsync(ea.DeliveryTag, false);
+                        return;
+                    }
+
+                    TimeSpan delay = TimeSpan.FromMilliseconds(_settings.RetryBaseDelayMilliseconds * Math.Pow(2, attempt - 1));
+                    _logger.LogWarning(ex, "Message {MessageId} from queue {QueueName} failed (attempt {Attempt}/{MaxAttempts}); retrying in {Delay}",
+                        message.Id, _queueName, attempt, maxAttempts, delay);
+
+                    try
+                    {
+                        await Task.Delay(delay, stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
                 }
             }
         };
 
-        await _channel.BasicConsumeAsync(queue: _queueName, autoAck: false, consumer: consumer, cancellationToken: stoppingToken);
+        try
+        {
+            await _channel.BasicConsumeAsync(queue: _queueName, autoAck: false, consumer: consumer, cancellationToken: stoppingToken);
+        }
+        catch (global::RabbitMQ.Client.Exceptions.OperationInterruptedException ex) when (ex.ShutdownReason?.ReplyCode == 404)
+        {
+            _logger.LogCritical(ex,
+                "Queue {QueueName} does not exist in the broker. Consumers do not declare queues: add its exchange, queue and binding " +
+                "to the RabbitMQ definitions (Store/docker-infrastructure/rabbitmq/definitions.json) or declare it with declareQueue.",
+                _queueName);
+            throw;
+        }
 
     }
 
@@ -159,6 +211,32 @@ internal class RabbitMqConsumer<T> : BackgroundService
         await _channel?.CloseAsync();
         await _connection?.CloseAsync();
         base.StopAsync(cancellationToken);
+    }
+
+    private string ErrorQueueName => _queueName + ".error";
+
+    /// <summary>Copies a message that could not be processed to <c>{queue}.error</c>, keeping the failure reason in the headers.</summary>
+    private async Task DeadLetterAsync(BasicDeliverEventArgs ea, string reason, int attempts, CancellationToken cancellationToken)
+    {
+        await _channel.QueueDeclareAsync(queue: ErrorQueueName, durable: true, exclusive: false, autoDelete: false,
+            arguments: null, cancellationToken: cancellationToken);
+
+        var properties = new BasicProperties
+        {
+            Persistent = true,
+            ContentType = ea.BasicProperties.ContentType,
+            Headers = new Dictionary<string, object?>
+            {
+                ["x-original-queue"] = _queueName,
+                ["x-original-exchange"] = ea.Exchange,
+                ["x-failure-reason"] = reason.Length > 4000 ? reason[..4000] : reason,
+                ["x-attempts"] = attempts,
+                ["x-failed-at"] = DateTimeOffset.UtcNow.ToString("O")
+            }
+        };
+
+        await _channel.BasicPublishAsync(exchange: string.Empty, routingKey: ErrorQueueName, mandatory: true,
+            basicProperties: properties, body: ea.Body, cancellationToken: cancellationToken);
     }
 
     private static T? DeserializeMessage(byte[] body)

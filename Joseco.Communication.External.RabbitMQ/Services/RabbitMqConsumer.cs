@@ -34,6 +34,16 @@ internal class RabbitMqConsumer<T> : BackgroundService
     private static readonly Meter Meter = new("Joseco.Communication.RabbitMQ");
     private static readonly Counter<long> MessagesReceivedCounter = Meter.CreateCounter<long>("rabbitmq.messages.received");
     private static readonly Counter<long> MessagesFailedCounter = Meter.CreateCounter<long>("rabbitmq.messages.failed");
+    private static readonly Counter<long> MessagesRetriedCounter = Meter.CreateCounter<long>("rabbitmq.messages.retried",
+        description: "Retries scheduled after a failed handler attempt.");
+    private static readonly Counter<long> MessagesDeadLetteredCounter = Meter.CreateCounter<long>("rabbitmq.messages.dead_lettered",
+        description: "Messages moved to the {queue}.error queue.");
+    private static readonly Histogram<double> ProcessingDuration = Meter.CreateHistogram<double>("rabbitmq.message.processing.duration",
+        unit: "s", description: "Time the handler took per attempt; outcome = success | error.");
+    private static readonly Histogram<double> DeliveryLatency = Meter.CreateHistogram<double>("rabbitmq.message.delivery.latency",
+        unit: "s", description: "Time from the creation of the integration message until its handler starts.");
+
+    private readonly KeyValuePair<string, object?>[] _metricTags;
 
     public RabbitMqConsumer(IServiceProvider provider, 
         ILogger<RabbitMqConsumer<T>> logger, 
@@ -48,6 +58,11 @@ internal class RabbitMqConsumer<T> : BackgroundService
         _settings = settings;
         _declareQueue = declareQueue;
         _exchangeName = exchangeName;
+        _metricTags =
+        [
+            new("queue", queueName),
+            new("message_type", typeof(T).Name)
+        ];
     }
 
     public async override Task StartAsync(CancellationToken cancellationToken)
@@ -134,10 +149,14 @@ internal class RabbitMqConsumer<T> : BackgroundService
             {
                 // Retrying can't fix a malformed body.
                 MessagesFailedCounter.Add(1, new KeyValuePair<string, object?>("queue", _queueName));
+                MessagesDeadLetteredCounter.Add(1, new TagList(_metricTags) { { "reason", "deserialization" } });
                 await DeadLetterAsync(ea, "Message could not be deserialized", 1, stoppingToken);
                 await _channel.BasicAckAsync(ea.DeliveryTag, false);
                 return;
             }
+
+            DeliveryLatency.Record(
+                Math.Max(0, (DateTimeOffset.UtcNow - message.CreatedAt).TotalSeconds), _metricTags);
 
             int maxAttempts = Math.Max(1, _settings.MaxRetryAttempts);
             for (int attempt = 1; ; attempt++)
@@ -146,10 +165,13 @@ internal class RabbitMqConsumer<T> : BackgroundService
                 using var scope = _provider.CreateScope();
                 var handler = scope.ServiceProvider.GetRequiredService<IIntegrationMessageConsumer<T>>();
 
+                long started = Stopwatch.GetTimestamp();
                 try
                 {
                     await handler.HandleAsync(message, stoppingToken);
 
+                    ProcessingDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds,
+                        new TagList(_metricTags) { { "outcome", "success" } });
                     MessagesReceivedCounter.Add(1, new KeyValuePair<string, object?>("queue", _queueName));
 
                     await _channel.BasicAckAsync(ea.DeliveryTag, false);
@@ -162,11 +184,14 @@ internal class RabbitMqConsumer<T> : BackgroundService
                 }
                 catch (Exception ex)
                 {
+                    ProcessingDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds,
+                        new TagList(_metricTags) { { "outcome", "error" } });
                     MessagesFailedCounter.Add(1, new KeyValuePair<string, object?>("queue", _queueName));
                     activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
 
                     if (attempt >= maxAttempts)
                     {
+                        MessagesDeadLetteredCounter.Add(1, new TagList(_metricTags) { { "reason", "handler_error" } });
                         _logger.LogError(ex, "Message {MessageId} from queue {QueueName} failed {Attempts} times; moving it to {ErrorQueue}",
                             message.Id, _queueName, attempt, ErrorQueueName);
 
@@ -174,6 +199,8 @@ internal class RabbitMqConsumer<T> : BackgroundService
                         await _channel.BasicAckAsync(ea.DeliveryTag, false);
                         return;
                     }
+
+                    MessagesRetriedCounter.Add(1, _metricTags);
 
                     TimeSpan delay = TimeSpan.FromMilliseconds(_settings.RetryBaseDelayMilliseconds * Math.Pow(2, attempt - 1));
                     _logger.LogWarning(ex, "Message {MessageId} from queue {QueueName} failed (attempt {Attempt}/{MaxAttempts}); retrying in {Delay}",

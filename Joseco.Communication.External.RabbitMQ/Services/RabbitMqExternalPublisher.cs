@@ -30,6 +30,8 @@ internal class RabbitMqExternalPublisher : IExternalPublisher
     private static readonly Counter<long> MessagesPublishedCounter = Meter.CreateCounter<long>("rabbitmq.messages.published");
     private static readonly Counter<long> MessagesFailedCounter = Meter.CreateCounter<long>("rabbitmq.messages.failed");
     private static readonly Counter<long> MessageSizeCounter = Meter.CreateCounter<long>("rabbitmq.messages.bytes");
+    private static readonly Histogram<double> PublishDuration = Meter.CreateHistogram<double>("rabbitmq.message.publish.duration",
+        unit: "s", description: "Time to serialize and publish a message; outcome = success | error.");
 
 
     public RabbitMqExternalPublisher(ILogger<RabbitMqExternalPublisher> logger, RabbitMqSettings settings)
@@ -91,6 +93,7 @@ internal class RabbitMqExternalPublisher : IExternalPublisher
 
         _logger.LogInformation("Publishing message of type {TypeName} to destination {Destination}", typeName, exchangeName);
 
+        long started = Stopwatch.GetTimestamp();
         try
         {
             var body = SerializeObjectToByteArray(message);
@@ -103,12 +106,16 @@ internal class RabbitMqExternalPublisher : IExternalPublisher
 
             MessagesPublishedCounter.Add(1, new KeyValuePair<string, object?>("exchange", exchangeName));
             MessageSizeCounter.Add(body.Length, new KeyValuePair<string, object?>("exchange", exchangeName));
+            PublishDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds,
+                new TagList { { "exchange", exchangeName }, { "outcome", "success" } });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error publishing message to exchange {ExchangeName}", exchangeName);
 
             MessagesFailedCounter.Add(1, new KeyValuePair<string, object?>("exchange", exchangeName));
+            PublishDuration.Record(Stopwatch.GetElapsedTime(started).TotalSeconds,
+                new TagList { { "exchange", exchangeName }, { "outcome", "error" } });
             throw;
         }
         
